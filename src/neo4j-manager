@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+
+
+import argparse
+import configparser
+import os
+import sys
+
+
+__CONFIG_FILE=".neo4j-manager.cfg"
+
+
+def add_ls_parser(sub_parsers):
+    ls_parser = sub_parsers.add_parser("ls",
+                                       help="list all available databases")
+    ls_parser.set_defaults(func=main_ls)
+
+
+def add_insert_parser(sub_parsers):
+    insert_parser = sub_parsers.add_parser("add",
+                                           help="add a new neo4j database")
+    insert_parser.add_argument("path",
+                               help="the path to the database folder")
+    insert_parser.add_argument("name",
+                               help="the name of the database")
+    insert_parser.set_defaults(func=main_add)
+
+
+def add_activate_parser(sub_parsers):
+    insert_parser = sub_parsers.add_parser("activate",
+                                           help="activate a different available neo4j database")
+    insert_parser.add_argument("name")
+    insert_parser.set_defaults(func=main_activate)
+
+
+def add_delete_parser(sub_parsers):
+    delete_parser = sub_parsers.add_parser("delete",
+                                           help="delete a neo4j database")
+    delete_parser.add_argument("name")
+    delete_parser.set_defaults(func=main_delete)
+
+
+def parse_args(args):
+    parser = argparse.ArgumentParser(description='')
+    parser.add_argument("--verbose",
+                        dest="verbose",
+                        action="store_true",
+                        help="print all informational messages")
+    sub_parsers = parser.add_subparsers()
+    add_ls_parser(sub_parsers)
+    add_insert_parser(sub_parsers)
+    add_activate_parser(sub_parsers)
+    add_delete_parser(sub_parsers)
+    parser.set_defaults(func=lambda a,b,c : parser.print_help())
+    return parser.parse_args(args)
+
+
+def get_managed_dbs(path, prefix, current):
+    dic = dict()
+    dic[current] = path + "graph.db"
+    for content in os.listdir(path):
+        if os.path.isdir(path + content):
+            if content[0:len(prefix)] == prefix:
+                dic[content[len(prefix):]] = path + content
+    return dic
+
+
+def main_ls(pargs, config, dbs):
+    keys = list(dbs.keys())
+    keys.sort()
+    for key in keys:
+        if key == config['NEO4J']['currentDatabaseName']:
+            print(key + ' [active]')
+        else:
+            print(key)
+
+
+def main_add(pargs, config, dbs):
+    if pargs.name in dbs:
+        exit("this database name is already taken")
+    if os.geteuid() != 0:
+        exit("you need root privileges to run this action")
+    if pargs.verbose:
+        print("adding {} as {}".format(pargs.path, pargs.name))
+    db_path = config['NEO4J']['databaseDirectory'] + config['NEO4J']['dbPrefix'] + pargs.name
+    os.system('service neo4j stop')
+    os.system('mv ' + pargs.path + ' ' + db_path)
+    os.system('chown -R neo4j:neo4j ' + db_path)
+    os.system('service neo4j start')
+    if pargs.verbose:
+        print("done")
+
+
+def main_activate(pargs, config, dbs):
+    if not pargs.name in dbs:
+        exit("there is no database name {} available".format(pargs.name))
+    if os.geteuid() != 0:
+        exit("you need root privileges to run this action")
+    if pargs.verbose:
+        print("activating {} and retiring {}".format(pargs.name,
+                                                     config['NEO4J']['currentDatabaseName']))
+    current_path = config['NEO4J']['databaseDirectory'] + "graph.db"
+    current_new_path = config['NEO4J']['databaseDirectory'] + config['NEO4J']['dbPrefix'] + config['NEO4J']['currentDatabaseName']
+    os.system('service neo4j stop')
+    os.system('mv ' +  current_path + ' ' + current_new_path)
+    os.system('mv ' +  dbs[pargs.name] +  ' ' +  current_path)
+    config['NEO4J']['currentDatabaseName'] = pargs.name
+    os.system('service neo4j start')
+    if pargs.verbose:
+        print("done")
+
+
+def main_delete(pargs, config, dbs):
+    if not pargs.name in dbs:
+        exit("there is no database name {} available".format(pargs.name))
+    if os.geteuid() != 0:
+        exit("you need root privileges to run this action")
+    if pargs.name == config['NEO4J']['currentDatabaseName']:
+        exit("cannot delete currently active database")
+    if pargs.verbose:
+        print("deleting {}".format(pargs.name))
+    os.system('rm -r ' + dbs[pargs.name])
+    if pargs.verbose:
+        print("done")
+
+
+def main(argv):
+    pargs = parse_args(argv)
+    config = configparser.ConfigParser()
+    config_path = os.path.expanduser("~") + "/" +  __CONFIG_FILE
+    config.read(config_path)
+    dbs = get_managed_dbs(config['NEO4J']['databaseDirectory'],
+                          config['NEO4J']['dbPrefix'],
+                          config['NEO4J']['currentDatabaseName'])
+    pargs.func(pargs, config, dbs)
+    with open(config_path, 'w') as f:
+        config.write(f)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
+
