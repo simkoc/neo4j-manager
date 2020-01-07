@@ -78,15 +78,21 @@ def main_ls(pargs, config, dbs):
 def main_add(pargs, config, dbs):
     if pargs.name in dbs:
         exit("this database name is already taken")
-    if os.geteuid() != 0:
+    if os.geteuid() != 0 and config['NEO4J']['rootRequired'].lower() != 'false':
         exit("you need root privileges to run this action")
     if pargs.verbose:
         print("adding {} as {}".format(pargs.path, pargs.name))
     db_path = config['NEO4J']['databaseDirectory'] + config['NEO4J']['dbPrefix'] + pargs.name
-    os.system('service neo4j stop')
+    if config['NEO4J']['rootRequired'].lower() == 'true':
+        os.system('systemctl stop {}'.format(config['NEO4J']['serviceName']))
+    else:
+        os.system('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
     os.system('mv ' + pargs.path + ' ' + db_path)
-    os.system('chown -R neo4j:neo4j ' + db_path)
-    os.system('service neo4j start')
+    os.system('chown -R {}:{} '.format(config['NEO4J']['user'],config['NEO4J']['group']) + db_path)
+    if config['NEO4J']['rootRequired'].lower() == 'true':
+        os.system('systemctl start {}'.format(config['NEO4J']['serviceName']))
+    else:
+        os.system('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
     if pargs.verbose:
         print("done")
 
@@ -94,18 +100,24 @@ def main_add(pargs, config, dbs):
 def main_activate(pargs, config, dbs):
     if not pargs.name in dbs:
         exit("there is no database name {} available".format(pargs.name))
-    if os.geteuid() != 0:
+    if os.geteuid() != 0 and config['NEO4J']['rootRequired'].lower() != 'false' :
         exit("you need root privileges to run this action")
     if pargs.verbose:
         print("activating {} and retiring {}".format(pargs.name,
                                                      config['NEO4J']['currentDatabaseName']))
     current_path = config['NEO4J']['databaseDirectory'] + "graph.db"
     current_new_path = config['NEO4J']['databaseDirectory'] + config['NEO4J']['dbPrefix'] + config['NEO4J']['currentDatabaseName']
-    os.system('service neo4j stop')
+    if config['NEO4J']['rootRequired'].lower() == 'true':
+        os.system('systemctl stop {}'.format(config['NEO4J']['serviceName']))
+    else:
+        os.system('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
     os.system('mv ' +  current_path + ' ' + current_new_path)
     os.system('mv ' +  dbs[pargs.name] +  ' ' +  current_path)
     config['NEO4J']['currentDatabaseName'] = pargs.name
-    os.system('service neo4j start')
+    if config['NEO4J']['rootRequired'].lower() == 'true':
+        os.system('systemctl start {}'.format(config['NEO4J']['serviceName']))
+    else:
+        os.system('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
     if pargs.verbose:
         print("done")
 
@@ -113,7 +125,7 @@ def main_activate(pargs, config, dbs):
 def main_delete(pargs, config, dbs):
     if not pargs.name in dbs:
         exit("there is no database name {} available".format(pargs.name))
-    if os.geteuid() != 0:
+    if os.geteuid() != 0 and config['NEO4J']['rootRequired'].lower() != 'false':
         exit("you need root privileges to run this action")
     if pargs.name == config['NEO4J']['currentDatabaseName']:
         exit("cannot delete currently active database")
