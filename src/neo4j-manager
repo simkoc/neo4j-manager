@@ -36,6 +36,10 @@ def add_activate_parser(sub_parsers):
 def add_delete_parser(sub_parsers):
     delete_parser = sub_parsers.add_parser("delete",
                                            help="delete a neo4j database")
+    delete_parser.add_argument("-i",
+                               dest="ignore",
+                               action="store_true",
+                               help="ignore exception due to missing db name and finish with return code 0")
     delete_parser.add_argument("name")
     delete_parser.set_defaults(func=main_delete)
 
@@ -124,7 +128,10 @@ def main_activate(pargs, config, dbs):
 
 def main_delete(pargs, config, dbs):
     if not pargs.name in dbs:
-        exit("there is no database name {} available".format(pargs.name))
+        if pargs.ignore:
+            return 0
+        else:
+            exit("there is no database name {} available".format(pargs.name))
     if os.geteuid() != 0 and config['NEO4J']['rootRequired'].lower() != 'false':
         exit("you need root privileges to run this action")
     if pargs.name == config['NEO4J']['currentDatabaseName']:
