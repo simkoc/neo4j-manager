@@ -135,10 +135,18 @@ def main_delete(pargs, config, dbs):
     if os.geteuid() != 0 and config['NEO4J']['rootRequired'].lower() != 'false':
         exit("you need root privileges to run this action")
     if pargs.name == config['NEO4J']['currentDatabaseName']:
-        exit("cannot delete currently active database")
+        print("warning deleting currently active database")
     if pargs.verbose:
         print("deleting {}".format(pargs.name))
+    if config['NEO4J']['rootRequired'].lower() == 'true':
+        os.system('systemctl stop {}'.format(config['NEO4J']['serviceName']))
+    else:
+        os.system('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
     os.system('rm -r ' + dbs[pargs.name])
+    if config['NEO4J']['rootRequired'].lower() == 'true':
+        os.system('systemctl start {}'.format(config['NEO4J']['serviceName']))
+    else:
+        os.system('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
     if pargs.verbose:
         print("done")
 
