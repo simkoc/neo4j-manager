@@ -143,6 +143,7 @@ def main_delete(pargs, config, dbs):
     else:
         os.system('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
     os.system('rm -r ' + dbs[pargs.name])
+    config['NEO4J']['currentDatabaseName'] = ""
     if config['NEO4J']['rootRequired'].lower() == 'true':
         os.system('systemctl start {}'.format(config['NEO4J']['serviceName']))
     else:
