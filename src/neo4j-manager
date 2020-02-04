@@ -85,13 +85,16 @@ class NonZeroExitCode(Exception):
         self._command = command
 
     def __str__(self):
-        return command + " exited non zero"
+        return self._command + " exited non zero"
+
+    def __repr__(self):
+        return self.__str__()
 
 
 def run_os_command(command):
     exit_code = os.system(command)
     if(exit_code != 0):
-        raise NonZeroExitCod(command)
+        raise NonZeroExitCode(command)
 
 
 def main_add(pargs, config, dbs):
@@ -102,16 +105,16 @@ def main_add(pargs, config, dbs):
     if pargs.verbose:
         print("adding {} as {}".format(pargs.path, pargs.name))
     db_path = config['NEO4J']['databaseDirectory'] + config['NEO4J']['dbPrefix'] + pargs.name
-    if config['NEO4J']['rootRequired'].lower() == 'true':
-        os.system('systemctl stop {}'.format(config['NEO4J']['serviceName']))
-    else:
-        os.system('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
-    os.system('mv ' + pargs.path + ' ' + db_path)
-    os.system('chown -R {}:{} '.format(config['NEO4J']['user'],config['NEO4J']['group']) + db_path)
-    if config['NEO4J']['rootRequired'].lower() == 'true':
-        os.system('systemctl start {}'.format(config['NEO4J']['serviceName']))
-    else:
-        os.system('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
+    # if config['NEO4J']['rootRequired'].lower() == 'true':
+    #     run_os_command('systemctl stop {}'.format(config['NEO4J']['serviceName']))
+    # else:
+    #     run_os_command('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
+    run_os_command('mv ' + pargs.path + ' ' + db_path)
+    run_os_command('chown -R {}:{} '.format(config['NEO4J']['user'],config['NEO4J']['group']) + db_path)
+    # if config['NEO4J']['rootRequired'].lower() == 'true':
+    #     run_os_command('systemctl start {}'.format(config['NEO4J']['serviceName']))
+    # else:
+    #     run_os_command('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
     if pargs.verbose:
         print("done")
 
@@ -127,18 +130,17 @@ def main_activate(pargs, config, dbs):
     current_path = config['NEO4J']['databaseDirectory'] + "graph.db"
     current_new_path = config['NEO4J']['databaseDirectory'] + config['NEO4J']['dbPrefix'] + config['NEO4J']['currentDatabaseName']
     if config['NEO4J']['rootRequired'].lower() == 'true':
-        os.system('systemctl stop {}'.format(config['NEO4J']['serviceName']))
+        run_os_command('systemctl stop {}'.format(config['NEO4J']['serviceName']))
     else:
-        os.system('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
-    exit_code = os.system('mv ' +  current_path + ' ' + current_new_path)
-    print(exit_code)
-    exit_code = os.system('mv ' +  dbs[pargs.name] +  ' ' +  current_path)
-    print(exit_code)
+        run_os_command('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
+    if config['NEO4J']['currentDatabaseName'] != "":
+        run_os_command('mv ' +  current_path + ' ' + current_new_path)
+    run_os_command('mv ' +  dbs[pargs.name] +  ' ' +  current_path)
     config['NEO4J']['currentDatabaseName'] = pargs.name
     if config['NEO4J']['rootRequired'].lower() == 'true':
-        os.system('systemctl start {}'.format(config['NEO4J']['serviceName']))
+        run_os_command('systemctl start {}'.format(config['NEO4J']['serviceName']))
     else:
-        os.system('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
+        run_os_command('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
     if pargs.verbose:
         print("done")
 
@@ -151,22 +153,24 @@ def main_delete(pargs, config, dbs):
             exit("there is no database name {} available".format(pargs.name))
     if os.geteuid() != 0 and config['NEO4J']['rootRequired'].lower() != 'false':
         exit("you need root privileges to run this action")
+    delete_current = False
     if pargs.name == config['NEO4J']['currentDatabaseName']:
         delete_current = True
-        print("warning deleting currently active database")
+        print("warning deleting currently active database - shutting down neo4j")
     if pargs.verbose:
         print("deleting {}".format(pargs.name))
     if config['NEO4J']['rootRequired'].lower() == 'true':
-        os.system('systemctl stop {}'.format(config['NEO4J']['serviceName']))
+        run_os_command('systemctl stop {}'.format(config['NEO4J']['serviceName']))
     else:
-        os.system('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
-    os.system('rm -r ' + dbs[pargs.name])
+        run_os_command('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
+    run_os_command('rm -r ' + dbs[pargs.name])
     if delete_current:
         config['NEO4J']['currentDatabaseName'] = ""
-    if config['NEO4J']['rootRequired'].lower() == 'true':
-        os.system('systemctl start {}'.format(config['NEO4J']['serviceName']))
-    else:
-        os.system('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
+    if not delete_current:
+        if config['NEO4J']['rootRequired'].lower() == 'true':
+            run_os_command('systemctl start {}'.format(config['NEO4J']['serviceName']))
+        else:
+            run_os_command('systemctl --user start {}'.format(config['NEO4J']['serviceName']))
     if pargs.verbose:
         print("done")
 
@@ -179,10 +183,13 @@ def main(argv):
     dbs = get_managed_dbs(config['NEO4J']['databaseDirectory'],
                           config['NEO4J']['dbPrefix'],
                           config['NEO4J']['currentDatabaseName'])
-    pargs.func(pargs, config, dbs)
-    with open(config_path, 'w') as f:
-        config.write(f)
-
+    try:
+        pargs.func(pargs, config, dbs)
+        with open(config_path, 'w') as f:
+            config.write(f)
+    except NonZeroExitCode as err:
+        print(err)
+        return 1
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
