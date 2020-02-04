@@ -79,6 +79,21 @@ def main_ls(pargs, config, dbs):
             print(key)
 
 
+class NonZeroExitCode(Exception):
+
+    def __init__(self, command):
+        self._command = command
+
+    def __str__(self):
+        return command + " exited non zero"
+
+
+def run_os_command(command):
+    exit_code = os.system(command)
+    if(exit_code != 0):
+        raise NonZeroExitCod(command)
+
+
 def main_add(pargs, config, dbs):
     if pargs.name in dbs:
         exit("this database name is already taken")
@@ -115,8 +130,10 @@ def main_activate(pargs, config, dbs):
         os.system('systemctl stop {}'.format(config['NEO4J']['serviceName']))
     else:
         os.system('systemctl --user stop {}'.format(config['NEO4J']['serviceName']))
-    os.system('mv ' +  current_path + ' ' + current_new_path)
-    os.system('mv ' +  dbs[pargs.name] +  ' ' +  current_path)
+    exit_code = os.system('mv ' +  current_path + ' ' + current_new_path)
+    print(exit_code)
+    exit_code = os.system('mv ' +  dbs[pargs.name] +  ' ' +  current_path)
+    print(exit_code)
     config['NEO4J']['currentDatabaseName'] = pargs.name
     if config['NEO4J']['rootRequired'].lower() == 'true':
         os.system('systemctl start {}'.format(config['NEO4J']['serviceName']))
